@@ -63,8 +63,11 @@ def max_pool_3x3(x, name='pool_3x3'):
 
 def trans2visiable(conv, iy, ix, cy, cx):
 	v = tf.slice(conv, (0, 0, 0, 0),  (1, -1, -1, -1))
-	v = tf.reshape(v, (iy, ix, cy*cx))
-	v = tf.reshape(v, (1, cy*iy, cx*ix, 1))
+	v = tf.reshape(v, (iy, ix, cy*cx)) # 60*80*64
+	v = tf.transpose(v, (0, 2, 1)) # 60 * 64 * 80
+	v = tf.reshape(v, (iy, cy, cx, ix)) # 60 * 8 * 8 * 80
+	v = tf.transpose(v, (1, 0, 2, 3)) # 8 * 60 * 8 * 80
+	v = tf.reshape(v, (1, iy*cy, ix*cx, 1))
 	return v
 
 def train():
@@ -74,17 +77,18 @@ def train():
 	with g.as_default():
 		X = tf.placeholder(tf.float32, [None, m, n, 3])
 		Y = tf.placeholder(tf.float32, [None, 1])
+		img = tf.Variable(np.zeros((480, 640), dtype='int32'))
 
-		W1 = weight([10, 10, 3, 32], 'w1')
-		b1 = bias([32], 'b1')
+		W1 = weight([10, 10, 3, 64], 'w1')
+		b1 = bias([64], 'b1')
 		h_conv1 = conv2d(X, W1, 'conv1') + b1
 		h_relu1 = tf.nn.relu(h_conv1)
 		h_pool1 = max_pool_3x3(h_relu1) # 60*80
 		loss1 = tf.nn.l2_loss(W1)
-		img1 = trans2visiable(h_pool1, 60, 80, 8, 4)
+		img1 = trans2visiable(h_pool1, 60, 80, 8, 8)
 		tf.summary.image('pool1', img1)
 
-		W2 = weight([8, 8, 32, 64], 'w2')
+		W2 = weight([8, 8, 64, 64], 'w2')
 		b2 = bias([64], 'b2')
 		h_conv2 = conv2d(h_pool1, W2, 'conv2') + b2
 		h_relu2 = tf.nn.relu(h_conv2)
@@ -120,9 +124,9 @@ def train():
 		loss5 = tf.nn.l2_loss(w_fc2)
 
 		loss = tf.reduce_mean((Y - y_conv)**2)
-		loss += (loss1 + loss2 + loss3 + loss4 + loss5) * 0.0001
+		loss += (loss1 + loss2 + loss3 + loss4 + loss5) * 1e-4
 		tf.summary.scalar('loss', loss)
-		train_step = tf.train.AdamOptimizer(1e-2).minimize(loss)
+		train_step = tf.train.AdamOptimizer(3e-3).minimize(loss)
 		
 		NUM_THREADS = 2
 		sess = tf.Session(config=tf.ConfigProto(
